@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import com.example.gradientgradetracker.ui.components.ErrorDialog
 import com.example.gradientgradetracker.ui.components.LoadingIndicator
 import com.example.gradientgradetracker.ui.components.SuccessDialog
+import com.example.gradientgradetracker.ui.screens.HomeScreen
 import com.example.gradientgradetracker.ui.screens.LoginScreen
 import com.example.gradientgradetracker.ui.screens.SignUpScreen
 import com.example.gradientgradetracker.ui.screens.UserRole
@@ -22,6 +23,7 @@ import com.example.gradientgradetracker.ui.viewmodels.LoginViewModel
 class MainActivity : ComponentActivity() {
     private val viewModel: LoginViewModel by viewModels()
     private var showSignUp by mutableStateOf(false)
+    private var showHome by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,8 +44,11 @@ class MainActivity : ComponentActivity() {
     private fun MainScreen() {
         val uiState by viewModel.uiState.collectAsState()
         
-        when (uiState) {
-            is LoginUiState.Initial -> {
+        when {
+            showHome -> {
+                HomeScreen()
+            }
+            uiState is LoginUiState.Initial -> {
                 if (showSignUp) {
                     SignUpScreen(
                         onSignUpClick = { email, password, confirmPassword ->
@@ -64,16 +69,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-            is LoginUiState.Loading -> {
+            uiState is LoginUiState.Loading -> {
                 LoadingIndicator()
             }
-            is LoginUiState.Success -> {
-                val user = (uiState as LoginUiState.Success).user
-                // TODO: Navigate to appropriate screen based on user role
-                // For now, just show login screen again
-                viewModel.resetState()
+            uiState is LoginUiState.Success -> {
+                showHome = true
+                // Optionally, reset state or pass user info to HomeScreen
             }
-            is LoginUiState.Error -> {
+            uiState is LoginUiState.Error -> {
                 val errorMessage = (uiState as LoginUiState.Error).message
                 ErrorDialog(
                     message = errorMessage,
@@ -82,7 +85,7 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
-            is LoginUiState.SignUpSuccess -> {
+            uiState is LoginUiState.SignUpSuccess -> {
                 val message = (uiState as LoginUiState.SignUpSuccess).message
                 SuccessDialog(
                     message = message,
