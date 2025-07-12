@@ -51,22 +51,47 @@ fun OverviewTab(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(Color(0xFFF5F9FF)) // subtle blue-tinted background
             .padding(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            StatCard(title = "Overall GWA", value = gwa.toString(), modifier = Modifier.weight(1f))
-            StatCard(title = "Subjects at Risk", value = subjectsAtRisk.toString(), modifier = Modifier.weight(1f))
+            StatCard(
+                title = "Overall GWA",
+                value = gwa.toString(),
+                valueColor = Color(0xFF185A9D),
+                modifier = Modifier.weight(1f),
+                highlight = true
+            )
+            StatCard(
+                title = "Subjects at Risk",
+                value = subjectsAtRisk.toString(),
+                valueColor = Color(0xFFFFC107),
+                modifier = Modifier.weight(1f),
+                highlight = true
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            StatCard(title = "Passing Rate", value = "$passingRate%", valueColor = Color(0xFF43CEA2), modifier = Modifier.weight(1f), highlight = true)
-            StatCard(title = "Target Progress", value = "$targetProgress%", valueColor = Color(0xFF43CEA2), modifier = Modifier.weight(1f), highlight = true)
+            StatCard(
+                title = "Passing Rate",
+                value = "$passingRate%",
+                valueColor = Color(0xFF43CEA2),
+                modifier = Modifier.weight(1f),
+                highlight = true
+            )
+            StatCard(
+                title = "Target Progress",
+                value = "$targetProgress%",
+                valueColor = Color(0xFFFFC107),
+                modifier = Modifier.weight(1f),
+                highlight = true
+            )
         }
         Spacer(modifier = Modifier.height(16.dp))
         subjects.forEach { subject ->
@@ -78,18 +103,18 @@ fun OverviewTab(
 
 @Composable
 fun SubjectDashboardCard(subject: SubjectOverview) {
-    val borderColor = when (subject.status) {
-        SubjectStatus.ALERT -> Color(0xFFD32F2F)
-        SubjectStatus.ON_TRACK -> Color(0xFF43CEA2)
+    val (bgColor, borderColor) = when (subject.status) {
+        SubjectStatus.ALERT -> Pair(Color(0xFFFFF8E1), Color(0xFFFFC107)) // yellow bg, yellow border
+        SubjectStatus.ON_TRACK -> Pair(Color(0xFFE3F2FD), Color(0xFF185A9D)) // blue bg, blue border
     }
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+            .padding(bottom = 16.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
         border = BorderStroke(2.dp, borderColor),
-        elevation = CardDefaults.cardElevation(4.dp)
+        elevation = CardDefaults.cardElevation(6.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
