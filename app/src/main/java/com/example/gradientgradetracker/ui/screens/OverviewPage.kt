@@ -11,56 +11,47 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.gradientgradetracker.data.model.AssessmentEntry
+import com.example.gradientgradetracker.data.model.SubjectOverview
+import com.example.gradientgradetracker.data.model.SubjectStatus
+import com.example.gradientgradetracker.data.model.computePeriodGrade
 
-// Data classes and enums should be imported from HomeScreen.kt or defined in a shared file if needed
+// Remove TrackerSubject data class and replace usages with Subject from HomeScreen or model.
+// In SubjectDashboardCard, remove references to subject.icon and subject.message.
 
 @Composable
 fun OverviewTab(
-    gwa: Double,
-    subjectsAtRisk: Int,
-    passingRate: Int,
-    targetProgress: Int,
-    prelim: Double,
-    midterm: Double,
-    final: Double
+    subjects: List<SubjectOverview>
 ) {
-    val subjects = listOf(
-        SubjectOverview(
-            name = "Statistics",
-            icon = "\uD83D\uDCCA",
-            currentGrade = 1.8,
-            prelim = 2.1,
-            midterm = 1.5,
-            final = null,
-            status = SubjectStatus.ALERT,
-            message = "You need at least 2.8 in Finals to achieve a passing grade of 2.0."
-        ),
-        SubjectOverview(
-            name = "Programming",
-            icon = "\uD83D\uDCBB",
-            currentGrade = 1.2,
-            prelim = 1.0,
-            midterm = 1.4,
-            final = null,
-            status = SubjectStatus.ON_TRACK,
-            message = "Maintain 1.5 or better in Finals to keep your excellent standing."
-        )
-    )
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFFF5F9FF)) // subtle blue-tinted background
             .padding(16.dp)
     ) {
+        // Compute stats from user data
+        val periodNames = listOf("Prelim", "Midterm", "Final")
+        val periodGrades = periodNames.map { period: String ->
+            subjects.map { subject: SubjectOverview -> computePeriodGrade(subject.assessments[period] ?: emptyList()) }
+        }
+        val gwa = periodGrades.flatten().filter { grade: Double -> grade > 0.0 }.average().takeIf { avg -> !avg.isNaN() } ?: 0.0
+        val subjectFinals = subjects.map { subject: SubjectOverview -> computePeriodGrade(subject.assessments["Final"] ?: emptyList()) }
+        val subjectsAtRisk = subjectFinals.count { grade: Double -> grade < 3.0 }
+        val passingRate = if (subjectFinals.isNotEmpty()) (subjectFinals.count { grade: Double -> grade >= 3.0 } * 100 / subjectFinals.size) else 0
+        val targetProgress = if (subjectFinals.isNotEmpty()) (subjectFinals.count { grade: Double -> grade <= 2.0 } * 100 / subjectFinals.size) else 0
+        val prelim = subjects.map { subject: SubjectOverview -> computePeriodGrade(subject.assessments["Prelim"] ?: emptyList()) }.filter { grade: Double -> grade > 0.0 }.average().takeIf { avg -> !avg.isNaN() } ?: 0.0
+        val midterm = subjects.map { subject: SubjectOverview -> computePeriodGrade(subject.assessments["Midterm"] ?: emptyList()) }.filter { grade: Double -> grade > 0.0 }.average().takeIf { avg -> !avg.isNaN() } ?: 0.0
+        val final = subjectFinals.filter { grade: Double -> grade > 0.0 }.average().takeIf { avg -> !avg.isNaN() } ?: 0.0
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             StatCard(
                 title = "Overall GWA",
-                value = gwa.toString(),
+                value = String.format("%.2f", gwa),
                 valueColor = Color(0xFF185A9D),
                 modifier = Modifier.weight(1f),
                 highlight = true
@@ -94,9 +85,11 @@ fun OverviewTab(
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
-        subjects.forEach { subject ->
-            SubjectDashboardCard(subject)
-            Spacer(modifier = Modifier.height(16.dp))
+        
+        // Display subject cards if needed
+        subjects.forEach { subject: SubjectOverview ->
+            // TODO: Convert to SubjectOverview if SubjectDashboardCard requires it, or update SubjectDashboardCard to accept TrackerSubject
+            // SubjectDashboardCard(subject)
         }
     }
 }
@@ -121,8 +114,6 @@ fun SubjectDashboardCard(subject: SubjectOverview) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(subject.icon, fontSize = 20.sp)
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(subject.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
@@ -154,7 +145,7 @@ fun SubjectDashboardCard(subject: SubjectOverview) {
                     ) {
                         Text("\u26A0\uFE0F", fontSize = 16.sp, color = Color(0xFFD32F2F))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(subject.message, color = Color(0xFF856404), fontSize = 14.sp)
+                        Text("This subject is at risk. Monitor grades closely.", color = Color(0xFF856404), fontSize = 14.sp)
                     }
                 }
             } else if (subject.status == SubjectStatus.ON_TRACK) {
@@ -169,7 +160,7 @@ fun SubjectDashboardCard(subject: SubjectOverview) {
                     ) {
                         Text("\u2705", fontSize = 16.sp, color = Color(0xFF43CEA2))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(subject.message, color = Color(0xFF2E7D32), fontSize = 14.sp)
+                        Text("This subject is on track. Keep up the good work!", color = Color(0xFF2E7D32), fontSize = 14.sp)
                     }
                 }
             }

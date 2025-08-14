@@ -49,6 +49,7 @@ android {
 
 dependencies {
     implementation libs.androidx.material3.android
+    implementation libs.play.services.mlkit.subject.segmentation
     def composeBom = platform('androidx.compose:compose-bom:2024.02.00')
     implementation composeBom
     androidTestImplementation composeBom

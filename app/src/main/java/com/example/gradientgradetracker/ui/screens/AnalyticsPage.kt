@@ -13,9 +13,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import com.example.gradientgradetracker.data.model.AssessmentEntry
+import com.example.gradientgradetracker.data.model.SubjectOverview
+import com.example.gradientgradetracker.data.model.SubjectStatus
+import com.example.gradientgradetracker.data.model.computePeriodGrade
 
 @Composable
-fun AnalyticsTab() {
+fun AnalyticsTab(
+    subjects: List<SubjectOverview>,
+    assessmentsByPeriod: Map<String, List<AssessmentEntry>>
+) {
+    val periodNames = listOf("Prelim", "Midterm", "Final")
+    val periodGrades = periodNames.map { period ->
+        computePeriodGrade(assessmentsByPeriod[period] ?: emptyList())
+    }
+    val subjectPerformances = subjects.map { it.name to (it.currentGrade ?: 0.0) }
+    val atRiskSubjects = subjects.filter { it.status == SubjectStatus.ALERT }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -37,7 +51,7 @@ fun AnalyticsTab() {
             ) {
                 Text("Grade Trend Analysis", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                // Mocked Line Chart
+                // Grade Trend Chart
                 Box(
                     modifier = Modifier
                         .height(80.dp)
@@ -48,18 +62,22 @@ fun AnalyticsTab() {
                     Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
                         val width = size.width
                         val height = size.height
-                        drawLine(
-                            color = Color(0xFF185A9D),
-                            start = androidx.compose.ui.geometry.Offset(width * 0.1f, height * 0.6f),
-                            end = androidx.compose.ui.geometry.Offset(width * 0.5f, height * 0.6f),
-                            strokeWidth = 6f
-                        )
-                        drawLine(
-                            color = Color(0xFF43CEA2),
-                            start = androidx.compose.ui.geometry.Offset(width * 0.5f, height * 0.6f),
-                            end = androidx.compose.ui.geometry.Offset(width * 0.9f, height * 0.3f),
-                            strokeWidth = 6f
-                        )
+                        periodNames.zipWithNext().forEachIndexed { idx, (prev, curr) ->
+                            val prevGrade = periodGrades.getOrNull(idx) ?: 0.0
+                            val currGrade = periodGrades.getOrNull(idx + 1) ?: 0.0
+                            val diff = currGrade - prevGrade
+                            val color = when {
+                                diff > 0.1 -> Color(0xFF43CEA2)
+                                diff < -0.1 -> Color(0xFFD32F2F)
+                                else -> Color(0xFF185A9D)
+                            }
+                            drawLine(
+                                color = color,
+                                start = androidx.compose.ui.geometry.Offset(width * (idx + 1) / (periodNames.size + 1).toFloat(), height * (1 - prevGrade.toFloat() / 4f)),
+                                end = androidx.compose.ui.geometry.Offset(width * (idx + 2) / (periodNames.size + 1).toFloat(), height * (1 - currGrade.toFloat() / 4f)),
+                                strokeWidth = 6f
+                            )
+                        }
                     }
                     Text(
                         text = "Prelim → Midterm → Final",
@@ -95,38 +113,26 @@ fun AnalyticsTab() {
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .height(72.dp)
-                                .width(32.dp)
-                                .background(Color(0xFF43CEA2), RoundedCornerShape(8.dp))
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Programming", fontSize = 12.sp)
-                        Text("1.2", fontWeight = FontWeight.Bold, color = Color(0xFF43CEA2), fontSize = 13.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .height(48.dp)
-                                .width(32.dp)
-                                .background(Color(0xFFFFC107), RoundedCornerShape(8.dp))
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Database", fontSize = 12.sp)
-                        Text("2.3", fontWeight = FontWeight.Bold, color = Color(0xFFFFC107), fontSize = 13.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .height(36.dp)
-                                .width(32.dp)
-                                .background(Color(0xFFD32F2F), RoundedCornerShape(8.dp))
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Statistics", fontSize = 12.sp)
-                        Text("1.8", fontWeight = FontWeight.Bold, color = Color(0xFFD32F2F), fontSize = 13.sp)
+                    subjectPerformances.forEach { (subject, grade) ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .height(72.dp * (grade.toFloat() / 4f))
+                                    .width(32.dp)
+                                    .background(when {
+                                        grade >= 3.0 -> Color(0xFF43CEA2)
+                                        grade >= 2.0 -> Color(0xFFFFC107)
+                                        else -> Color(0xFFD32F2F)
+                                    }, RoundedCornerShape(8.dp))
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(subject, fontSize = 12.sp)
+                            Text(grade.toString(), fontWeight = FontWeight.Bold, color = when {
+                                grade >= 3.0 -> Color(0xFF43CEA2)
+                                grade >= 2.0 -> Color(0xFFFFC107)
+                                else -> Color(0xFFD32F2F)
+                            }, fontSize = 13.sp)
+                        }
                     }
                 }
             }
@@ -148,12 +154,34 @@ fun AnalyticsTab() {
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.padding(start = 8.dp)) {
-                    Text("• Statistics grade dropped 0.6 points from Prelim to Midterm", fontSize = 14.sp, color = Color(0xFFD32F2F))
-                    Text("• Programming shows consistent improvement trend", fontSize = 14.sp, color = Color(0xFF43CEA2))
-                    Text("• Focus on exam preparation for better Midterm performance", fontSize = 14.sp, color = Color(0xFF185A9D))
-                    Text("• 2 subjects on track to meet target grades", fontSize = 14.sp, color = Color(0xFF43CEA2))
+                    periodNames.zipWithNext().forEachIndexed { idx, (prev, curr) ->
+                        val prevGrade = periodGrades.getOrNull(idx) ?: 0.0
+                        val currGrade = periodGrades.getOrNull(idx + 1) ?: 0.0
+                        val diff = currGrade - prevGrade
+                        val color = when {
+                            diff > 0.1 -> Color(0xFF43CEA2)
+                            diff < -0.1 -> Color(0xFFD32F2F)
+                            else -> Color(0xFF185A9D)
+                        }
+                        Text(
+                            "• $curr grade ${(if (diff > 0) "improved" else if (diff < 0) "dropped" else "remained stable")} by ${String.format("%.2f", kotlin.math.abs(diff))} from $prev",
+                            fontSize = 14.sp,
+                            color = color
+                        )
+                    }
+                    Text(
+                        "• ${atRiskSubjects.size} subject(s) currently at risk",
+                        fontSize = 14.sp,
+                        color = if (atRiskSubjects.isEmpty()) Color(0xFF43CEA2) else Color(0xFFD32F2F)
+                    )
+                    val onTrackCount = subjects.count { it.status == SubjectStatus.ON_TRACK }
+                    Text(
+                        "• $onTrackCount subject(s) on track to meet target grades",
+                        fontSize = 14.sp,
+                        color = Color(0xFF43CEA2)
+                    )
                 }
             }
         }
     }
-} 
+}

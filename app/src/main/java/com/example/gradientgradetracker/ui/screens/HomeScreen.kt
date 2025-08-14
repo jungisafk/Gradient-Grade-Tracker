@@ -1,46 +1,26 @@
 package com.example.gradientgradetracker.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.draw.clip
-import com.example.gradientgradetracker.ui.screens.OverviewTab
-import com.example.gradientgradetracker.ui.screens.SubjectsTab
-import com.example.gradientgradetracker.ui.screens.AnalyticsTab
-import com.example.gradientgradetracker.ui.screens.GoalPage
-
-data class SubjectOverview(
-    val name: String,
-    val icon: String,
-    val currentGrade: Double?,
-    val prelim: Double?,
-    val midterm: Double?,
-    val final: Double?,
-    val status: SubjectStatus,
-    val message: String
-)
-
-enum class SubjectStatus { ALERT, ON_TRACK }
+import com.example.gradientgradetracker.data.model.AssessmentEntry
+import com.example.gradientgradetracker.data.model.SubjectOverview
+import com.example.gradientgradetracker.data.model.SubjectStatus
+import com.example.gradientgradetracker.data.model.computePeriodGrade
+import com.example.gradientgradetracker.data.model.Subject
+import com.example.gradientgradetracker.ui.screens.SubjectUI
 
 @Composable
 fun HomeScreen(
@@ -131,10 +111,80 @@ fun HomeScreen(
             }
 
             // Content
+            var subjects by remember { mutableStateOf(listOf<SubjectUI>()) }
+
+            // Handlers
+            fun addSubject(subject: Subject, icon: String) {
+                val newSubject = if (subject.id.isBlank()) subject.copy(id = java.util.UUID.randomUUID().toString()) else subject
+                subjects = subjects + SubjectUI(subject = newSubject, icon = icon)
+            }
+
+            fun removeSubject(id: String) {
+                subjects = subjects.filterNot { it.subject.id == id }
+            }
+
+            fun addAssessment(subjectId: String, period: String, entry: AssessmentEntry) {
+                subjects = subjects.map { subj ->
+                    if (subj.subject.id == subjectId) {
+                        subj.copy(assessments = subj.assessments.toMutableMap().apply {
+                            getOrPut(period) { mutableListOf() }.add(entry)
+                        })
+                    } else subj
+                }
+            }
+
+            fun removeAssessment(subjectId: String, period: String, index: Int) {
+                subjects = subjects.map { subj ->
+                    if (subj.subject.id == subjectId) {
+                        subj.copy(assessments = subj.assessments.toMutableMap().apply {
+                            getOrPut(period) { mutableListOf() }.let {
+                                if (index in it.indices) it.removeAt(index)
+                            }
+                        })
+                    } else subj
+                }
+            }
+
+            // --- Pass state and handlers to tabs ---
             when (selectedNavIndex) {
-                0 -> OverviewTab(gwa, subjectsAtRisk, passingRate, targetProgress, prelim, midterm, final)
-                1 -> SubjectsTab()
-                2 -> RemindersTab()
+                0 -> OverviewTab(subjects.map {
+                    SubjectOverview(
+                        id = it.subject.id,
+                        name = it.subject.name,
+                        currentGrade = computePeriodGrade(it.assessments["Final"] ?: emptyList()),
+                        prelim = computePeriodGrade(it.assessments["Prelim"] ?: emptyList()),
+                        midterm = computePeriodGrade(it.assessments["Midterm"] ?: emptyList()),
+                        final = computePeriodGrade(it.assessments["Final"] ?: emptyList()),
+                        status = if (computePeriodGrade(it.assessments["Final"] ?: emptyList()) < 3.0) SubjectStatus.ALERT else SubjectStatus.ON_TRACK,
+                        assessments = it.assessments
+                    )
+                })
+                1 -> SubjectsTab(
+                    subjects = subjects,
+                    onAddSubject = ::addSubject,
+                    onRemoveSubject = ::removeSubject,
+                    onAddAssessment = ::addAssessment,
+                    onRemoveAssessment = ::removeAssessment
+                )
+                2 -> AnalyticsTab(
+                    subjects = subjects.map {
+                        SubjectOverview(
+                            id = it.subject.id,
+                            name = it.subject.name,
+                            currentGrade = computePeriodGrade(it.assessments["Final"] ?: emptyList()),
+                            prelim = computePeriodGrade(it.assessments["Prelim"] ?: emptyList()),
+                            midterm = computePeriodGrade(it.assessments["Midterm"] ?: emptyList()),
+                            final = computePeriodGrade(it.assessments["Final"] ?: emptyList()),
+                            status = if (computePeriodGrade(it.assessments["Final"] ?: emptyList()) < 3.0) SubjectStatus.ALERT else SubjectStatus.ON_TRACK,
+                            assessments = it.assessments
+                        )
+                    },
+                    assessmentsByPeriod = mapOf(
+                        "Prelim" to subjects.flatMap { it.assessments["Prelim"] ?: emptyList() },
+                        "Midterm" to subjects.flatMap { it.assessments["Midterm"] ?: emptyList() },
+                        "Final" to subjects.flatMap { it.assessments["Final"] ?: emptyList() }
+                    )
+                )
                 3 -> SettingsTab()
             }
         }
