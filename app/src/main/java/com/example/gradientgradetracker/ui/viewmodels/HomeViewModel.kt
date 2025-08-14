@@ -77,13 +77,13 @@ class HomeViewModel : ViewModel() {
                 type = ReminderType.valueOf(type),
                 userId = userId
             )
-            reminderRepository.addReminder(reminder)
+            reminderRepository.addReminder(userId, reminder)
         }
     }
 
-    fun deleteReminder(reminderId: String) {
+    fun deleteReminder(userId: String, reminderId: String) {
         viewModelScope.launch {
-            reminderRepository.deleteReminder(reminderId)
+            reminderRepository.deleteReminder(userId, reminderId)
         }
     }
 } 

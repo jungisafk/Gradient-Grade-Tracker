@@ -2,18 +2,19 @@ package com.example.gradientgradetracker.data.repository
 
 import com.example.gradientgradetracker.data.model.Reminder
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
 
 class ReminderRepository {
     private val firestore = FirebaseFirestore.getInstance()
-    private val remindersCollection = firestore.collection("reminders")
+    private fun col(userId: String) = firestore.collection("users").document(userId).collection("reminders")
 
-    suspend fun addReminder(reminder: Reminder): Result<Reminder> {
+    suspend fun addReminder(userId: String, reminder: Reminder): Result<Reminder> {
         return try {
-            val docRef = remindersCollection.document()
-            val newReminder = reminder.copy(id = docRef.id)
+            val docRef = col(userId).document()
+            val newReminder = reminder.copy(id = docRef.id, userId = userId)
             docRef.set(newReminder).await()
             Result.success(newReminder)
         } catch (e: Exception) {
@@ -21,18 +22,18 @@ class ReminderRepository {
         }
     }
 
-    suspend fun updateReminder(reminder: Reminder): Result<Reminder> {
+    suspend fun updateReminder(userId: String, reminder: Reminder): Result<Reminder> {
         return try {
-            remindersCollection.document(reminder.id).set(reminder).await()
+            col(userId).document(reminder.id).set(reminder.copy(userId = userId)).await()
             Result.success(reminder)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun deleteReminder(reminderId: String): Result<Unit> {
+    suspend fun deleteReminder(userId: String, reminderId: String): Result<Unit> {
         return try {
-            remindersCollection.document(reminderId).delete().await()
+            col(userId).document(reminderId).delete().await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -41,21 +42,23 @@ class ReminderRepository {
 
     fun getReminders(userId: String): Flow<List<Reminder>> = flow {
         try {
-            val snapshot = remindersCollection
-                .whereEqualTo("userId", userId)
-                .get()
-                .await()
+            val snapshot = col(userId).get().await()
             emit(snapshot.toObjects(Reminder::class.java))
         } catch (e: Exception) {
             emit(emptyList())
         }
     }
 
+    fun listenReminders(userId: String, onChange: (List<Reminder>) -> Unit): ListenerRegistration {
+        return col(userId).addSnapshotListener { snap, _ ->
+            if (snap != null) onChange(snap.toObjects(Reminder::class.java))
+        }
+    }
+
     fun getUpcomingReminders(userId: String): Flow<List<Reminder>> = flow {
         try {
             val currentTime = System.currentTimeMillis()
-            val snapshot = remindersCollection
-                .whereEqualTo("userId", userId)
+            val snapshot = col(userId)
                 .whereGreaterThan("date", currentTime)
                 .get()
                 .await()
@@ -64,4 +67,4 @@ class ReminderRepository {
             emit(emptyList())
         }
     }
-} 
+}
