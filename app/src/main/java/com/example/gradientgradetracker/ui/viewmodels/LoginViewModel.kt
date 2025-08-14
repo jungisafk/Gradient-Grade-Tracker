@@ -25,6 +25,22 @@ class LoginViewModel : ViewModel() {
 
     private val authRepository = AuthRepository()
 
+    fun checkExistingSession() {
+        viewModelScope.launch {
+            _uiState.value = LoginUiState.Loading
+            try {
+                val user = authRepository.getCurrentUser()
+                if (user != null) {
+                    _uiState.value = LoginUiState.Success(user)
+                } else {
+                    _uiState.value = LoginUiState.Initial
+                }
+            } catch (e: Exception) {
+                _uiState.value = LoginUiState.Initial
+            }
+        }
+    }
+
     fun login(email: String, password: String) {
         viewModelScope.launch {
             _uiState.value = LoginUiState.Loading

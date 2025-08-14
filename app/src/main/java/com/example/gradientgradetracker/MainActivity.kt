@@ -38,6 +38,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // Check if there is an existing Firebase session and skip login
+        viewModel.checkExistingSession()
     }
 
     @Composable
@@ -46,7 +48,12 @@ class MainActivity : ComponentActivity() {
         
         when {
             showHome -> {
-                HomeScreen()
+                HomeScreen(
+                    onLogout = {
+                        showHome = false
+                        viewModel.resetState() // go back to Initial → shows LoginScreen
+                    }
+                )
             }
             uiState is LoginUiState.Initial -> {
                 if (showSignUp) {
@@ -74,7 +81,6 @@ class MainActivity : ComponentActivity() {
             }
             uiState is LoginUiState.Success -> {
                 showHome = true
-                // Optionally, reset state or pass user info to HomeScreen
             }
             uiState is LoginUiState.Error -> {
                 val errorMessage = (uiState as LoginUiState.Error).message

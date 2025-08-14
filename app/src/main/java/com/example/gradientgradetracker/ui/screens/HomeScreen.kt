@@ -15,12 +15,29 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 import com.example.gradientgradetracker.data.model.AssessmentEntry
 import com.example.gradientgradetracker.data.model.SubjectOverview
 import com.example.gradientgradetracker.data.model.SubjectStatus
 import com.example.gradientgradetracker.data.model.computePeriodGrade
 import com.example.gradientgradetracker.data.model.Subject
-import com.example.gradientgradetracker.ui.screens.SubjectUI
+import androidx.compose.runtime.remember
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.example.gradientgradetracker.data.datastore.UiState
+import com.example.gradientgradetracker.data.datastore.UiStateStore
+import androidx.room.Room
+import com.example.gradientgradetracker.data.local.AppDb
+import com.example.gradientgradetracker.data.local.AssessmentEntity
+import com.example.gradientgradetracker.data.local.SubjectEntity
+import com.example.gradientgradetracker.data.repository.GradesRepository
+import com.google.firebase.firestore.FirebaseFirestore
+import com.example.gradientgradetracker.work.SyncWorker
+import kotlinx.coroutines.launch
+import java.util.UUID
+import java.io.File
 
 @Composable
 fun HomeScreen(
@@ -34,9 +51,31 @@ fun HomeScreen(
     targetProgress: Int = 85,
     prelim: Double = 2.1,
     midterm: Double = 1.5,
-    final: Double = 1.8
+    final: Double = 1.8,
+    onLogout: () -> Unit = {}
 ) {
-    var selectedNavIndex by remember { mutableStateOf(0) }
+    val context = LocalContext.current
+
+    // DataStore for UI state persistence
+    val dataStore: DataStore<Preferences> = remember {
+        PreferenceDataStoreFactory.create(
+            produceFile = { File(context.filesDir, "ui_state_prefs.preferences_pb") }
+        )
+    }
+    val uiStateStore = remember { UiStateStore(dataStore) }
+    val uiState by uiStateStore.uiFlow.collectAsState(initial = UiState(0, "Home", "[]", "{}"))
+
+    var selectedNavIndex by rememberSaveable { mutableStateOf(uiState.selectedTab) }
+    LaunchedEffect(uiState.selectedTab) { selectedNavIndex = uiState.selectedTab }
+    LaunchedEffect(selectedNavIndex) { uiStateStore.setSelectedTab(selectedNavIndex) }
+
+    // Local Room DB + repository
+    val appDb = remember {
+        Room.databaseBuilder(context, AppDb::class.java, "grades.db")
+            .addMigrations(com.example.gradientgradetracker.data.local.DbMigrations.MIGRATION_1_2)
+            .build()
+    }
+    val repository = remember { GradesRepository(appDb, FirebaseFirestore.getInstance()) }
     val navItems = listOf(
         "Home" to Icons.Default.Home,
         "Grades" to Icons.Default.DateRange,
@@ -113,10 +152,64 @@ fun HomeScreen(
             // Content
             var subjects by remember { mutableStateOf(listOf<SubjectUI>()) }
 
+            // Enqueue background sync on start
+            LaunchedEffect(Unit) { SyncWorker.enqueue(context) }
+
+            val scope = rememberCoroutineScope()
+            // Observe local Room subjects and assessments
+            LaunchedEffect(repository) {
+                repository.subjectsFlow.collect { entities ->
+                    // Base subjects
+                    subjects = entities.map { SubjectUI(subject = Subject(id = it.id, name = it.name), icon = it.icon) }
+                    // For each, collect assessments
+                    entities.forEach { e ->
+                        scope.launch {
+                            repository.assessmentsFlow(e.id).collect { items ->
+                                val grouped = items.groupBy { it.period }.mapValues { (_, list) ->
+                                    list.map { ae ->
+                                        AssessmentEntry(
+                                            name = ae.type,
+                                            scoreObtained = ae.score,
+                                            totalScore = ae.total,
+                                            weight = ae.weight,
+                                            date = ae.date,
+                                            assessmentType = ae.type
+                                        )
+                                    }.toMutableList()
+                                }
+                                val defaultMap = mutableMapOf(
+                                    "Prelim" to mutableListOf<AssessmentEntry>(),
+                                    "Midterm" to mutableListOf<AssessmentEntry>(),
+                                    "Final" to mutableListOf<AssessmentEntry>()
+                                )
+                                grouped.forEach { (k, v) -> defaultMap[k] = v }
+                                subjects = subjects.map { s -> if (s.subject.id == e.id) s.copy(assessments = defaultMap) else s }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Start remote snapshot listeners (cross-device sync)
+            LaunchedEffect(Unit) {
+                val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                if (userId != null) {
+                    repository.startSubjectsListener(userId)
+                    repository.startAssessmentsListener(userId)
+                }
+            }
+
             // Handlers
             fun addSubject(subject: Subject, icon: String) {
-                val newSubject = if (subject.id.isBlank()) subject.copy(id = java.util.UUID.randomUUID().toString()) else subject
-                subjects = subjects + SubjectUI(subject = newSubject, icon = icon)
+                val now = System.currentTimeMillis()
+                val id = if (subject.id.isBlank()) UUID.randomUUID().toString() else subject.id
+                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                val entity = SubjectEntity(id = id, name = subject.name, icon = icon, updatedAt = now, userId = uid, pendingOp = "insert")
+                scope.launch {
+                    repository.upsertSubject(entity)
+                    // Ensure a sync is scheduled so subjects appear in Firestore
+                    SyncWorker.enqueue(context)
+                }
             }
 
             fun removeSubject(id: String) {
@@ -124,12 +217,30 @@ fun HomeScreen(
             }
 
             fun addAssessment(subjectId: String, period: String, entry: AssessmentEntry) {
+                // Optimistic UI
                 subjects = subjects.map { subj ->
                     if (subj.subject.id == subjectId) {
                         subj.copy(assessments = subj.assessments.toMutableMap().apply {
                             getOrPut(period) { mutableListOf() }.add(entry)
                         })
                     } else subj
+                }
+                val entity = AssessmentEntity(
+                    localId = UUID.randomUUID().toString(),
+                    remoteId = null,
+                    subjectId = subjectId,
+                    period = period,
+                    type = entry.assessmentType,
+                    score = entry.scoreObtained,
+                    total = entry.totalScore,
+                    weight = entry.weight,
+                    date = entry.date,
+                    updatedAt = System.currentTimeMillis(),
+                    pendingOp = "insert"
+                )
+                scope.launch {
+                    repository.addOrUpdateAssessment(entity)
+                    SyncWorker.enqueue(context)
                 }
             }
 
@@ -185,7 +296,7 @@ fun HomeScreen(
                         "Final" to subjects.flatMap { it.assessments["Final"] ?: emptyList() }
                     )
                 )
-                3 -> SettingsTab()
+                3 -> SettingsTab(onLoggedOut = { onLogout() })
             }
         }
     }

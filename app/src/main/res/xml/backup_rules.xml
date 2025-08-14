@@ -6,8 +6,8 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Exclude Room databases and DataStore so they are not backed up/restored -->
+    <exclude domain="database" path="."/>
+    <exclude domain="sharedpref" path="ui_state_prefs.preferences_pb"/>
+    <!-- If you later re-enable allowBackup, these excludes ensure local-only data is wiped on uninstall and never restored. -->
 </full-backup-content>

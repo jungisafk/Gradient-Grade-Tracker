@@ -9,4 +9,4 @@ data class Subject(
     val midtermGrade: Double? = null,
     val finalGrade: Double? = null,
     val userId: String = ""
-) 
+)
